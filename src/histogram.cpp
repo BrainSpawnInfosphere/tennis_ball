@@ -2,8 +2,6 @@
 #include <sensor_msgs/Image.h>
 #include <image_transport/image_transport.h> // handles raw or compressed images
 #include <cv_bridge/CvBridge.h>
-//#include <opencv/cv.h>
-//#include <opencv/highgui.h>
 
 
 #include <opencv2/opencv.hpp>
@@ -212,58 +210,57 @@ void printstd(IplImage *s, IplImage *m){
 	printf("Val mean/std: %f %f\n", mean[2], std[2]);
 }
 
-// do image proccessing to find color blob
-IplImage *process3(IplImage *img)
-{
-	CvSize size = cvGetSize(img);	
-	IplImage *hsv = cvCreateImage(size, IPL_DEPTH_8U, 3);
-	CvMat *mask = cvCreateMat(size.height, size.width, CV_8UC1);
-	IplImage *hough_in = cvCreateImage(size, 8, 1);
+
+// using overloaded operators
+void colorReduce13(cv::Mat &image, int div=64) {
 	
-	//IplImage *img = _img; //?
+	int n= static_cast<int>(log(static_cast<double>(div))/log(2.0));
+	// mask used to round the pixel value
+	uchar mask= 0xFF<<n; // e.g. for div=16, mask= 0xF0
+	
+	// perform color reduction
+	image=(image&cv::Scalar(mask,mask,mask))+cv::Scalar(div/2,div/2,div/2);
+}
+
+// do image proccessing to find color blob
+void process( cv::Mat& in, cv::Mat& out)
+{	
+	cv::Mat hsv(in.cols,in.rows,CV_8UC3);
+	cv::Mat mask(in.cols,in.rows,CV_8UC1);
+	cv::Mat h(in.cols,in.rows,CV_8UC1);
 	
 	// Convert to HSV
-	cvCvtColor(img, hsv, CV_BGR2HSV);
+	cvtColor(in, hsv, CV_BGR2HSV);
+    
+	//split(hsv,h,NULL,NULL,NULL);
 	
-	IplImage* h = cvCreateImage( cvGetSize(hsv), IPL_DEPTH_8U, 1 );
-	cvSplit(hsv,h,NULL,NULL,NULL);
-	
-	//stdColor(hsv);
 	
 	// Generate binary mask 
 	// \todo make hsv colors inputs [20110326]
-	cvInRangeS(hsv, hsv_lower,hsv_upper, mask);
+	inRange(hsv, hsv_lower,hsv_upper, mask);
 	
 	// Perform morphological ops 
-	//cvClose(mask, mask, se21);
-	//cvOpen(mask, mask, se11);
-	
-	cvErode(mask,mask,0, 3);
-	cvDilate(mask,mask,0,5);
+	erode(mask,mask, cv::Mat()); // get rid of "noise"
+	dilate(mask,mask,cv::Mat()); // fill in holes
 	//cvSmooth(mask, mask, CV_GAUSSIAN, 5, 5, 0, 0);
-	
-	// rename hough_in - why have it? mask is a matrix ...
-	cvCopy(mask, hough_in, NULL); // copy mask to image
-	
-	//printstd(hsv,hough_in);
 	
 	// add much?
 	//cvThreshold(hough_in, hough_in, 5, 255, CV_THRESH_BINARY);
 	
-	CvMoments mom;
-	cvMoments(mask, &mom, 1); // find blobs and treat binary
-	double area = cvGetCentralMoment(&mom,0,0);
+	Moments mom = moments(mask,true);
+	double area = mom.m00; //cvGetCentralMoment(&mom,0,0);
 	
-	if(area > 0){ // found tenis ball
+	if(area > 0){ // found something
 		
-		double xx = cvGetSpatialMoment(&mom,1,0);
-		double yy = cvGetSpatialMoment(&mom,0,1);
+		double xx = mom.m10; //cvGetSpatialMoment(&mom,1,0);
+		double yy = mom.m01; //cvGetSpatialMoment(&mom,0,1);
 		
 		float x = xx/area;
 		float y = yy/area;
 		
 		//printf("Ball: %f %f\n",x,y);
-		cvCircle( img, cvPoint(x,y),3, CV_RGB(0,255,0), -1, 8, 0 );
+		out = mask;
+		circle( in, cvPoint(x,y),3, CV_RGB(0,255,0), -1, 8, 0 );
 		
 		Point2f p(x,y);
 		
@@ -272,7 +269,7 @@ IplImage *process3(IplImage *img)
 		p.x = m.at<float>(0,0);
 		p.y = m.at<float>(1,0);
 		
-		cvCircle( img, p,3, CV_RGB(255,0,0), -1, 8, 0 );
+		circle( in, p,3, CV_RGB(255,0,0), -1, 8, 0 );
 	}
 	else { // no tennis ball found
 		const cv::Mat& m = kalman.update();
@@ -280,11 +277,9 @@ IplImage *process3(IplImage *img)
 		p.x = m.at<float>(0,0);
 		p.y = m.at<float>(1,0);
 		
-		cvCircle( img, p,3, CV_RGB(0,0,255), -1, 8, 0 );
+		out = mask;
+		circle( in, p,3, CV_RGB(0,0,255), -1, 8, 0 );
 	}
-	
-	
-	return hough_in;
 }
 
 
@@ -293,11 +288,11 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg_ptr)
 		//ROS_INFO("image ...");
 		
 		// Grab image from bridge to cv_image
-		IplImage *cv_image = NULL;
+		IplImage *ipl = NULL;
 		
 		try
 		{
-			cv_image = bridge_.imgMsgToCv(msg_ptr, "bgr8");
+			ipl = bridge_.imgMsgToCv(msg_ptr, "bgr8");
 		}
 		catch (sensor_msgs::CvBridgeException& error)
 		{
@@ -306,15 +301,27 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg_ptr)
 		}
 		
 		// find tennis ball
-		//img = process(cv_image);
-		//img = process2(cv_image);
-		IplImage *img = process3(cv_image);
-		//img = processHough(cv_image);
+		cv::Mat image(ipl);
+		cv::Mat cv_image(ipl);
+		cv::Mat result(image.rows,image.cols,CV_8UC1);
+		//cv_image = process(cv_image);
+		
+		colorReduce13(image,16);
+		//colorReduce13(cv_image);
+		
+		process(cv_image,result);
 		
 		// debug - display images
-		cvShowImage("Image window",cv_image);
-		cvShowImage("hsv",img);
-		cvWaitKey(10);
+        cv::Mat gray(image.rows,image.cols,CV_8UC1);
+        cv::cvtColor(image, gray, CV_BGR2GRAY);
+        cv::Mat edges(gray);
+        
+        //cv::Canny(gray,edges,125,255,cv::THRESH_BINARY_INV);
+        cv::Canny(gray,edges,125,255);
+        
+		imshow("Image window",image);
+		imshow("result - mask",result);
+		waitKey(10);
 		
 }
 
@@ -324,20 +331,17 @@ int main(int argc, char** argv)
 	ros::NodeHandle n;
 	ros::Rate r(30);
 	
-	cvNamedWindow("Image window");
-	cvNamedWindow("hsv");
+	namedWindow("Image window",1);
+	namedWindow("hsv",1);
 	
 	image_transport::ImageTransport it_(n);
 	
-	//image_sub_ = it_.subscribe("axis_camera", 1, &ImageConverter::imageCallback, this, image_transport::TransportHints("compressed"));
 	image_transport::Subscriber image_sub_ = it_.subscribe("camera", 1, imageCallback, image_transport::TransportHints("compressed"));
 		
 		
 	//CvSize size = cvGetSize(cv_image);		
 	//setup(size);
-	ROS_INFO("Camera Node setup()");
-	
-	
+	//ROS_INFO("Camera Node setup()");
 	
 	// Main Loop -- go until ^C terminates
 	while (ros::ok())
@@ -345,11 +349,6 @@ int main(int argc, char** argv)
 		ros::spinOnce();
 		r.sleep();
 	}
-	
-	
-	cvDestroyWindow("Image window");
-	cvDestroyWindow("hsv");
-	//cvReleaseImage(&hsv);
 	
 	return 0;
 }
