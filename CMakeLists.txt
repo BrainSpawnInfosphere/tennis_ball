@@ -29,17 +29,18 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
-rosbuild_add_library(cvBlob 
-                   src/cvBlob/cvblob.cpp
-                   src/cvBlob/cvlabel.cpp
-		   src/cvBlob/cvaux.cpp
-		   src/cvBlob/cvcontour.cpp
-		   src/cvBlob/cvtrack.cpp
-		   src/cvBlob/cvcolor.cpp)
+#rosbuild_add_library(cvBlob 
+#                   src/cvBlob/cvblob.cpp
+#                   src/cvBlob/cvlabel.cpp
+#		   src/cvBlob/cvaux.cpp
+#		   src/cvBlob/cvcontour.cpp
+#		   src/cvBlob/cvtrack.cpp
+#		   src/cvBlob/cvcolor.cpp)
 
-rosbuild_add_executable(tennis_ball src/tennis_ball.cpp)
-target_link_libraries(tennis_ball cvBlob)
+#rosbuild_add_executable(tennis_ball src/tennis_ball.cpp)
+#target_link_libraries(tennis_ball cvBlob)
 #target_link_libraries(tennis_ball opencv_core)
 
-rosbuild_add_executable(face src/face.cpp)
-rosbuild_add_executable(histogram src/histogram.cpp)
+#rosbuild_add_executable(face src/face.cpp)
+
+rosbuild_add_executable(tracker src/ball_tracker.cpp)
