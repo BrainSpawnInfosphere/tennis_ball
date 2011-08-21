@@ -25,7 +25,20 @@ Originally designed to track tennis balls through a video sequence, but has been
 test
 
 ```c++
+#include <opencv.hpp>
+
 void function(void){
+	int a;
+	std::string hi;
 	hello;
+	switch(a){
+	case 'a':
+		hello(a,b);
+		break;
+	default:
+		goodbye©;
+	}
+
+	if( a == true) printf("hello\n");
 }
 ```
