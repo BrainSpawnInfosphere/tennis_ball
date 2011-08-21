@@ -1,10 +1,11 @@
-# Tennis_ball
-
-ROS node.
+# ROS Node: Tennis_ball
 
 **Author:** Kevin Walchko
+
 **License:** BSD
+
 **Language:** C++
+
 **Website:** TBD
 
 Originally designed to track tennis balls through a video sequence, but has been modified to track any colored object. You just need to pass a histogram representing the object to be tracked.
@@ -36,7 +37,7 @@ void function(void){
 		hello(a,b);
 		break;
 	default:
-		goodbye©;
+		goodbye(c);
 	}
 
 	if( a == true) printf("hello\n");
