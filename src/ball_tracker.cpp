@@ -37,7 +37,7 @@
  *
  * Tracks a colored ball using OpenCV 2.2.
  *
- * rosrun tennis_ball tracker 
+ * rosrun tennis_ball tracker _debug:=true/false _histogram:=file_path
  *
  * Change Log:
  * 21 Aug 2011 Created
@@ -54,6 +54,7 @@
 #include <image_transport/image_transport.h> // handles raw or compressed images
 #include <cv_bridge/CvBridge.h>
 
+#include <iostream>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -62,6 +63,7 @@
 #include "Kalman.h"
 #include "Histogram.h"
 #include "HistogramFinder.h"
+#include "kevin.h"
 
 using namespace cv;
 
@@ -69,12 +71,14 @@ sensor_msgs::CvBridge bridge;
 
 //---- Setup finder and color histogram --
 HistogramFinder finder;
-//ColorHistogram hc;
-//HistogramHS<cv::MatND> hc;
-HistogramHS<cv::SparseMat> hc;
+//HistogramHS<cv::SparseMat> hc;
+
+std::string defaultimage = "/Users/kevin/ros_sandbox/images/red_ref_1.jpg";
 
 // 32 works good
-const int num_colors = 32;
+const int num_colors = 128;
+
+bool debug = false;
 
 // colors to search for
 //CvScalar hsv_lower = cvScalar(20.0, 50, 50, 0); //20-30
@@ -89,153 +93,227 @@ Kalman kalman(4,2,1.0f/30.0f);
 
 ////////////////////////////////////////////////////////
 
+
+
+class BallFinder {
+public:
+    BallFinder(){
+        ;
+    }
+    
+    void setNumColors(int i){
+        cr.set(i);
+    }
+    
+    const cv::Mat& getResult(){
+        return result;
+    }
+    
+    const cv::MatND& getHistogram(){
+        return colorhist;
+    }
+
+    // need to figure out a better findBall() function!
+    cv::Rect findBall(cv::Mat& image){
+        // Convert to HSV space
+        cv::Mat hsv;    
+        preprocess(image,hsv);
+        
+        // find ball    
+#if 1    
+        finder.findHS(hsv, result);
+#else
+        // blue = 240 -> 120
+        cv::inRange(hsv,Scalar(110,120,0),Scalar(130,255,255),result);
+        //cv::inRange(hsv,Scalar(0,0,0),Scalar(255,255,255),result);
+#endif
+        // Perform morphological ops 
+        erode(result,result, cv::Mat()); // get rid of "noise"
+        dilate(result,result,cv::Mat()); // fill in holes
+        
+        // Get location
+        cv::Rect rect = getBounds(result,image);
+        cv::circle(image, cvPoint(rect.x+rect.width/2.0,rect.y+rect.height/2.0),3, CV_RGB(0,255,0), -1, 8, 0 );
+    
+        return rect;
+    }
+
+    bool createHistogram(std::vector<std::string>& pics,int num_colors){
+        // get images
+        unsigned int size = pics.size();
+        cv::Mat img, hsv[size];
+        
+        for(unsigned int i=0;i<pics.size();i++){
+            img = cv::imread(pics[i].c_str(),1);
+            if(!img.data) return false;
+            preprocess(img,hsv[i]);
+        }
+        
+        // make histogram
+        HistogramHS<cv::MatND> hc;
+        colorhist = hc.getHistogramHSV(hsv,size,num_colors,num_colors); 
+        //hc.print(colorhist);
+        //HistogramHS<cv::SparseMat> hc;
+        //cv::SparseMat colorhist = hc.getHistogram(imgs,2); 
+        finder.setHistogram(colorhist);
+        finder.setThreshold(0.03f);
+    }
+       
+    
+protected:    
+
+    void preprocess(cv::Mat& in, cv::Mat& out){
+        // reduce color space
+        cv::Mat image_reduced = in.clone(); // fixme!!
+        cv::Mat image_blur = in.clone(); // fixme!!
+        cr.reduce(image_reduced);
+        
+        // smooth image
+        cv::blur(image_reduced,image_blur,Size(9,9));
+        
+        // Convert to HSV space
+        cv::cvtColor(image_blur, out, CV_BGR2HSV);
+    }
+     
+    /**
+     * \input image 8b single channel image
+     * \input color_image BGR image to draw boundry on
+     */
+    Rect getBounds(const cv::Mat& in, cv::Mat& color_image){
+        //ROS_INFO("getBounds");
+        
+        vector<vector<Point> > v;
+        cv::Rect rect;
+        
+        cv::Mat image = in.clone();
+        
+        findContours(image,v,CV_RETR_LIST,CV_CHAIN_APPROX_NONE);
+        
+        ROS_INFO("getBounds found %d blobs",v.size());
+        
+        // no target ball in image
+        if(v.size() == 0) return rect;
+        
+        // Finds the contour with the largest area
+        int area = 0;
+        unsigned int idx;
+        for(unsigned int i=0; i<v.size();i++) {
+            if(area < v[i].size()){
+                idx = i; 
+                area = v[i].size();
+            }
+        }
+        // Calculates the bounding rect of the largest area contour
+        rect = boundingRect(v[idx]);
+        Point pt1, pt2;
+        pt1.x = rect.x;
+        pt1.y = rect.y;
+        pt2.x = rect.x + rect.width;
+        pt2.y = rect.y + rect.height;
+        
+        // Draws the rect in the original image and show it
+        rectangle(color_image, pt1, pt2, CV_RGB(255,0,0), 1);
+        
+        return rect;
+    }
+    
+    HistogramFinder finder;
+    ColorReduction cr;
+    cv::MatND colorhist;
+    cv::Rect ball_rect; 
+    cv::Mat result;
+};
+
 ////////////////////////////////////////////////////////
 
-void stdColor(IplImage *s){
-	Mat src = cvarrToMat(s);
-	Scalar mean,std;
-	meanStdDev(src, mean, std);
-	printf("============================\n");
-	printf("Hue mean/std: %f %f\n", mean[0], std[0]);
-	printf("Sat mean/std: %f %f\n", mean[1], std[1]);
-	printf("Val mean/std: %f %f\n", mean[2], std[2]);
-}
-
-void printstd(IplImage *s, IplImage *m){
-	Mat src = cvarrToMat(s);
-	Mat mat = cvarrToMat(m);
-	
-	Scalar mean,std;
-	meanStdDev(src, mean, std, mat);
-	
-	printf("============================\n");
-	printf("Hue mean/std: %f %f\n", mean[0], std[0]);
-	printf("Sat mean/std: %f %f\n", mean[1], std[1]);
-	printf("Val mean/std: %f %f\n", mean[2], std[2]);
-}
-
-// do image proccessing to find color blob
-void process( cv::Mat& in, cv::Mat& color_image)
-{	
-	
-   cv::Mat mask = in;
-	
-	// Perform morphological ops 
-	erode(mask,mask, cv::Mat()); // get rid of "noise"
-	dilate(mask,mask,cv::Mat()); // fill in holes
-	
-	Moments mom = moments(mask,true);
-	double area = mom.m00; //cvGetCentralMoment(&mom,0,0);
-	
-	if(area > 0){ // found something
-		
-		double xx = mom.m10; //cvGetSpatialMoment(&mom,1,0);
-		double yy = mom.m01; //cvGetSpatialMoment(&mom,0,1);
-		
-		float x = xx/area;
-		float y = yy/area;
-		
-		//printf("Ball: %f %f\n",x,y);
-      //ROS_INFO("Ball: %f %f\n",x,y);
-		//out = mask;
-		circle( color_image, cvPoint(x,y),3, CV_RGB(0,255,0), -1, 8, 0 );
-		
-		Point2f p(x,y);
-		
-		const cv::Mat& m = kalman.update(p);
-		
-		p.x = m.at<float>(0,0);
-		p.y = m.at<float>(1,0);
-		
-		circle( color_image, p,6, CV_RGB(255,0,0), 2, 8, 0 );
-	}
-	else { // no tennis ball found
-		const cv::Mat& m = kalman.update();
-		Point2f p;
-		p.x = m.at<float>(0,0);
-		p.y = m.at<float>(1,0);
-      
-      //ROS_INFO(" ... ");
-		
-		//out = mask;
-		circle( color_image, p,3, CV_RGB(0,0,255), -1, 8, 0 );
-	}
-}
+BallFinder bf;
 
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg_ptr)
-	{
-		//ROS_INFO("image ...");
-		
-		// Grab image from bridge to cv_image
-		IplImage *ipl = NULL;
-		
-		try
-		{
-			ipl = bridge.imgMsgToCv(msg_ptr, "bgr8");
-		}
-		catch (sensor_msgs::CvBridgeException& error)
-		{
-			ROS_ERROR("Can't get image from CvBridge");
-			return;
-		}
-		
-		// grab image and make temps
-		cv::Mat image(ipl);
-		
-      // reduce color space
-      cv::Mat image_reduced = hc.colorReduce(image,num_colors);
-      
-      // Convert to HSV space
-      cv::Mat hsv;
-      cv::cvtColor(image_reduced, hsv, CV_BGR2HSV);
-      cv::Mat result = finder.findHS(hsv);
-      
-      
-      process(result,image);
-      
-		imshow("Image window",image);
-		//imshow("Image window",image_reduced);
-		//imshow("result - mask",result);
-		waitKey(10);
-		
+{
+  //ROS_INFO("image ...");
+  
+  // Grab image from bridge to cv_image
+  IplImage *ipl = NULL;
+  
+  try
+  {
+    ipl = bridge.imgMsgToCv(msg_ptr, "bgr8");
+  }
+  catch (sensor_msgs::CvBridgeException& error)
+  {
+    ROS_ERROR("Can't get image from CvBridge");
+    return;
+  }
+    
+    //ROS_INFO("grabbed image transport");
+    
+    // grab image and make temps
+    cv::Mat image(ipl);
+    
+    bf.findBall(image);
+    //if(ok) cv::Rect rect = bf.getBounds(); ???
+    
+    /*
+     class Target {
+        cv::Rect bounds;
+        cv::Point cm;
+        
+        void draw(cv::Mat& image);
+     }
+     */
+    
+    if(debug){
+        imshow("Image window",image);
+        //imshow("Image window",image_reduced);
+        imshow("result - mask",bf.getResult());
+        waitKey(10);
+    }
+  
+  //ROS_INFO("Hi");
+  
 }
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "tennis_ball");
-	ros::NodeHandle n;
-	ros::Rate r(30);
-   
-   //---- Setup Histogram ---------
-	cv::Mat ball = cv::imread("/Users/kevin/ros_sandbox/camera_node/red_ref_1.jpg",1);
-	if (!ball.data){
-      ROS_ERROR("Couldn't read histogram data file");
-      return 1;
-   }
-   
-   //---- build histogram and setup finder --
-   cv::Mat ball_reduced = hc.colorReduce(ball,num_colors);
-	//cv::MatND colorhist = hc.getHueSaturationHistogram(ball_reduced);
-	//cv::MatND colorhist = hc.getHistogram(ball_reduced);
-  cv::SparseMat colorhist = hc.getHistogram(ball_reduced); 
-	finder.setHistogram(colorhist);
-	finder.setThreshold(0.03f);
+	ros::init(argc, argv, "tracker");
+	ros::NodeHandle n; //("~");
+	ros::Rate r(15);
 	
-	namedWindow("Image window",1);
-	namedWindow("result - mask",1);
-	
-	image_transport::ImageTransport transport(n);
-	image_transport::Subscriber image_sub = transport.subscribe("opencv_cam/camera", 1, imageCallback, image_transport::TransportHints("compressed"));
-		
-   
-	
-	// Main Loop -- go until ^C terminates
-	while (ros::ok())
-	{
-		ros::spinOnce();
-		r.sleep();
-	}
-	
-	return 0;
+	n.param<bool>("debug",debug, true);		n.deleteParam("debug");
+  
+    //---- Setup Histogram ---------
+    //std::string histogram;
+    //n.param<std::string>("histogram",histogram, defaultimage);		n.deleteParam("histogram");
+ 
+    std::vector<std::string> imgs;
+    imgs.push_back("/Users/kevin/ros_sandbox/images/blue_ref_0.jpg");
+    imgs.push_back("/Users/kevin/ros_sandbox/images/blue_ref_1.jpg");
+    imgs.push_back("/Users/kevin/ros_sandbox/images/blue_ref_2.jpg");
+    bf.createHistogram(imgs,num_colors);
+    
+    namedWindow("Histogram");
+    imshow("Histogram",bf.getHistogram());
+    //waitKey(0);
+    //exit(1);
+
+    ROS_INFO("histogram set");
+    
+    if(debug){
+        namedWindow("Image window",1);cvMoveWindow("Image window",0,0);
+        namedWindow("result - mask",1);cvMoveWindow("result - mask",0,300);
+    }
+    
+    image_transport::ImageTransport transport(n);
+    image_transport::Subscriber image_sub = transport.subscribe("/opencv_cam/camera", 1, imageCallback /*, image_transport::TransportHints("compressed")*/);
+    
+    // Main Loop -- go until ^C terminates
+    while (ros::ok())
+    {
+        //ROS_INFO("go");
+        ros::spinOnce();
+        r.sleep();
+    }
+    
+    return 0;
 }

@@ -53,6 +53,10 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include <iostream>
+
+#include "kevin.h"
+
 // where T if for cv::MatND or cv:SparseMat
 //template <class T>
 class HistogramFinder {
@@ -61,7 +65,7 @@ private:
    
    const unsigned int num_colors;
 	float hranges[2];
-   const float* ranges[3];
+   const float* ranges[3]; // 3 ranges BGR, HSV, etc
    int channels[3];
    
 	float threshold;
@@ -73,7 +77,8 @@ private:
 public:
    
 	HistogramFinder(unsigned int colors=32) : threshold(0.1f), isSparse(false), num_colors(colors) {
-      
+	    
+        // just set them all to the same for now
 		ranges[0]= hranges; // all channels have the same range 
 		ranges[1]= hranges; 
 		ranges[2]= hranges; 
@@ -81,7 +86,8 @@ public:
    
 	// Sets the threshold on histogram values [0,1]
 	void setThreshold(float t) {
-      
+	    // bound threshold to [0,1]
+        t = (t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t));
 		threshold= t;
 	}
    
@@ -99,15 +105,15 @@ public:
 		cv::normalize(histogram,histogram,1.0);
 	}
    
-	// Sets the reference histogram
+	// Sets the reference histogram from sparse matrix
 	void setHistogram(const cv::SparseMat& h) {
       
 		isSparse= true;
 		shistogram= h;
 		cv::normalize(shistogram,shistogram,1.0,cv::NORM_L2);
 	}
-   
-	cv::Mat colorReduce(const cv::Mat &image, int div=64) {
+    /*
+	cv::Mat& colorReduce(cv::Mat &image, int div=64) {
       
       int n= static_cast<int>(log(static_cast<double>(div))/log(2.0));
       // mask used to round the pixel value
@@ -117,19 +123,23 @@ public:
       cv::Mat_<cv::Vec3b>::const_iterator itend= image.end<cv::Vec3b>();
       
       // Set output image (always 1-channel)
-      cv::Mat result(image.rows,image.cols,image.type());
-      cv::Mat_<cv::Vec3b>::iterator itr= result.begin<cv::Vec3b>();
+      //cv::Mat result(image.rows,image.cols,image.type());
+      //cv::Mat_<cv::Vec3b>::iterator itr= result.begin<cv::Vec3b>();
       
-      for ( ; it!= itend; ++it, ++itr) {
+      for ( ; it!= itend; ++it , ++itr) {
          
-         (*itr)[0]= ((*it)[0]&mask) + div/2;
-         (*itr)[1]= ((*it)[1]&mask) + div/2;
-         (*itr)[2]= ((*it)[2]&mask) + div/2;
+         //(*itr)[0]= ((*it)[0]&mask) + div/2;
+         //(*itr)[1]= ((*it)[1]&mask) + div/2;
+         //(*itr)[2]= ((*it)[2]&mask) + div/2;
+         
+         (*it)[0]= ((*it)[0]&mask) + div/2;
+         (*it)[1]= ((*it)[1]&mask) + div/2;
+         (*it)[2]= ((*it)[2]&mask) + div/2;
       }
       
-      return result;
+      return image;
    }
-   
+   */
    /**
     * Finds the colored object - all in one funciton call
     * 
@@ -140,6 +150,7 @@ public:
     * param double min size of blob
     * return bool if object blob is found
     */
+    /*
 	bool find(cv::Mat& color_image, cv::Point2f& p, const double minSize = 0) {
       bool ret = false;
       
@@ -181,21 +192,23 @@ public:
       
 		return ret;
 	}
+	*/
    
    /**
     * Finds the Hue & Saturation of the previously provided histogram in the 
     * image passed to it.
     *
     * params cv::Mat image
-    * return cv::Mat result binary image of found blobs
+    * return cv::Mat result binary (single channel) image of found blobs
     */
-	cv::Mat findHS(const cv::Mat& image) {
+	cv::Mat& findHS(const cv::Mat& image, cv::Mat& result) {
       
-		cv::Mat result;
+		//cv::Mat result;
       
 		hranges[0]= 0.0;
 		hranges[1]= 180.0;
       
+      //printImage(image,"image findHS");
       
       float sranges[] = {0.0, 255.0};
       const float *ranges[] = {hranges,sranges};
@@ -204,6 +217,7 @@ public:
 		//for (int i=0; i<dim; i++)
       //this->channels[i]= channels[i];
       
+      // result of calcBackProject is always a single channel image
 		if (isSparse) { // call the right function based on histogram type
          
          cv::calcBackProject(&image,
@@ -227,8 +241,10 @@ public:
                              );
 		}
       
+          //printImage(result,"result backproj");
+
       // Threshold back projection to obtain a binary image
-		if (threshold>0.0)
+		//if (threshold>0.0)
          cv::threshold(result, result, 255.0*threshold, 255, cv::THRESH_BINARY);
       
 		return result;

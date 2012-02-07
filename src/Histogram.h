@@ -53,6 +53,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include <iostream>
 
 /**
  * Handles a generic nD histogram creation and color reduction. This class
@@ -108,6 +109,17 @@ public:
    /**
     * Helper funtion
     */
+   inline T getHistogram2D(const cv::Mat *image,
+                            int num,
+                           const float *ranges[2],
+                           int histSize[],
+                           int channels[]){
+      return getHistogram(image,num,ranges,histSize,channels,2);
+   }
+   
+   /**
+    * Helper funtion
+    */
    inline T getHistogram3D(const cv::Mat &image,
                            const float *ranges[2],
                            int histSize[],
@@ -142,6 +154,29 @@ public:
 		return hist;
 	}  
    
+	T getHistogram(const cv::Mat *image,
+	                int num,
+                  const float *ranges[2],
+                  int histSize[],
+                  int channels[],
+                  int dim) {
+      
+		T hist;
+      
+		// Compute histogram
+		cv::calcHist(image, 
+                   num,			    // histogram of 1 image only
+                   channels,	// the channel used
+                   cv::Mat(),	// no mask is used
+                   hist,		  // the resulting histogram
+                   dim,			    // it is a 3D histogram
+                   histSize,	// number of bins
+                   ranges		// pixel value range
+                   );    // do not accumulate histogram
+      
+		return hist;
+	}  
+   
    
    /**
     * Print the histogram bins for a 1D histogram
@@ -150,12 +185,13 @@ public:
     */
    void print(const cv::MatND& hist){
       for (int i=0; i<256; i++) 
-         cout << "Value " << i << " = " << hist.at<float>(i) << endl; 
+         std::cout << "Value " << i << " = " << hist.at<float>(i) << std::endl; 
    }
    
    /**
     * Color reduction function from ...
-    */
+    * Should move it out into its own class ...
+    *//*
 	cv::Mat colorReduce(const cv::Mat &image, int div=64) {
       
       int n= static_cast<int>(log(static_cast<double>(div))/log(2.0));
@@ -180,6 +216,7 @@ public:
       
       return result;
    }
+   */
 };
 
 /**
@@ -196,46 +233,71 @@ public:
    /**
     * Create a histogram for hue & saturation from 1 image
     */
-   T getHistogram(const cv::Mat &image, int hbins=256, int sbins=256) {
-      
-		T hist;
-      
-		// Convert to HSV color space
-		cv::Mat hsv;
-		cv::cvtColor(image, hsv, CV_BGR2HSV);
-      
-		// Prepare arguments for a 2D hue histogram
-		float hranges[]= {0.0, 180.0};
-      float sranges[] = {0.0, 255.0};
-      const float *ranges[] = {hranges,sranges};
-      int histSize[] = {hbins, sbins};
-		int channels[] = {0, 1}; // hue & saturation channel
-      
-		// Compute histogram from base class
-		return hist = Histogram<T>::getHistogram2D(hsv,ranges,histSize,channels);
+    T getHistogram(const cv::Mat &image, int hbins=256, int sbins=256) {
+        
+        T hist;
+        
+        // Convert to HSV color space
+        cv::Mat hsv;
+        cv::cvtColor(image, hsv, CV_BGR2HSV);
+        
+        // Prepare arguments for a 2D hue histogram
+        float hranges[]= {0.0, 180.0};
+        float sranges[] = {0.0, 255.0};
+        const float *ranges[] = {hranges,sranges};
+        int histSize[] = {hbins, sbins};
+        int channels[] = {0, 1}; // hue & saturation channel
+        
+        // Compute histogram from base class
+        return hist = Histogram<T>::getHistogram2D(hsv,ranges,histSize,channels);
 	}  
    
    /**
     * Create a histogram for hue & saturation from many images.
+    * \input image array in BGR format 
     */
-   T getHistogram(cv::Mat *image, const int num, int hbins=256, int sbins=256) {
-      
-		T hist;
-      
-		// Convert to HSV color space
-		cv::Mat *hue = new cv::Mat[num];
-		for(int i=0;i<num;i++) cv::cvtColor(image[i], hue[i], CV_BGR2HSV);
-      
-		// Prepare arguments for a 2D hue histogram
-		float hranges[]= {0.0, 180.0};
-      float sranges[] = {0.0, 255.0};
-      const float *ranges[] = {hranges,sranges};
-      int histSize[] = {hbins, sbins};
-		int channels[] = {0, 1}; // hue & saturation channel
-      
-      return hist;
-		// Compute histogram from base class
-		//return hist = Histogram<T>::getHistogram2D(hsv,num,ranges,histSize,channels);
+    T getHistogramBGR(cv::Mat *image, const int num, int hbins=256, int sbins=256) {
+        
+        T hist;
+        
+        // Convert to HSV color space
+        cv::Mat *hsv = new cv::Mat[num];
+        for(int i=0;i<num;i++) cv::cvtColor(image[i], hsv[i], CV_BGR2HSV);
+        
+        // Prepare arguments for a 2D hue histogram
+        float hranges[]= {0.0, 180.0};
+        float sranges[] = {0.0, 255.0};
+        const float *ranges[] = {hranges,sranges};
+        int histSize[] = {hbins, sbins};
+        int channels[] = {0, 1}; // hue & saturation channel
+        
+        //return hist;
+        // Compute histogram from base class
+        return hist = Histogram<T>::getHistogram2D(hsv,num,ranges,histSize,channels);
+	}
+	
+   /**
+    * Create a histogram for hue & saturation from many images.
+    * \input hsv image array already converted to HSV
+    */
+    T getHistogramHSV(cv::Mat *hsv, const int num, int hbins=256, int sbins=256) {
+        
+        T hist;
+        
+        // Convert to HSV color space
+        //cv::Mat *hsv = new cv::Mat[num];
+        //for(int i=0;i<num;i++) cv::cvtColor(image[i], hsv[i], CV_BGR2HSV);
+        
+        // Prepare arguments for a 2D hue histogram
+        float hranges[]= {0.0, 180.0};
+        float sranges[] = {0.0, 255.0};
+        const float *ranges[] = {hranges,sranges};
+        int histSize[] = {hbins, sbins};
+        int channels[] = {0, 1}; // hue & saturation channel
+        
+        //return hist;
+        // Compute histogram from base class
+        return hist = Histogram<T>::getHistogram2D(hsv,num,ranges,histSize,channels);
 	}
    
 };

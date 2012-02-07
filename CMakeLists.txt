@@ -43,4 +43,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 #rosbuild_add_executable(face src/face.cpp)
 
+find_package(OpenCV REQUIRED)
+
 rosbuild_add_executable(tracker src/ball_tracker.cpp)
+target_link_libraries(tracker ${OpenCV_LIBS})

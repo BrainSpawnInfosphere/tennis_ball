@@ -50,17 +50,17 @@
 #ifndef __KALMAN_FILTER_OPENCV_H__
 #define __KALMAN_FILTER_OPENCV_H__
 
-//#include <ros/ros.h>
-
 #include <opencv2/opencv.hpp>
 #include <opencv2/video/tracking.hpp>
+
+#include <iostream>
 
 
 ///////////////////////////////////////////////////////
 
 
 /**
- * Wrap class cv::KalmanFilter like this to handle it prettier.
+ * Wraper class for cv::KalmanFilter. Creates a simple discrete filter.
  */
 class Kalman
 {
@@ -68,6 +68,8 @@ public:
 	
 	Kalman(unsigned int m, unsigned int n, float rate);
 	~Kalman() { delete filter; }
+  
+  void init(cv::Mat& Q, cv::Mat& R);
 	
 	const cv::Mat& update(const cv::Point2f& p);
 	const cv::Mat& update(void);
@@ -78,7 +80,7 @@ private:
 	
 	cv::KalmanFilter* filter; // why pointer?
 	
-	unsigned int numActiveFrames; // ?
+	unsigned int numActiveFrames; // not sure there is value in tracking these?
 	unsigned int numInactiveFrames;
 };
 
@@ -98,7 +100,7 @@ const cv::Mat& Kalman::update(const cv::Point2f& p)
 	++numActiveFrames;
 	numInactiveFrames = 0;
 	
-	// Tracking 4 points
+	// Tracking center mass point
 	cv::Mat measurement(M, 1, CV_32F);
 	measurement.at<float>(0,0) = p.x;
 	measurement.at<float>(1,0) = p.y;
@@ -131,12 +133,15 @@ const cv::Mat& Kalman::update(void)
 
 
 /**
- * Kalman constructor: Parameters of the filter are set in here.
- * These parameters have a direct effect on the behaviour pf the filter.
+ * Kalman constructor, sets up defaults so the filter will run as is.
+ * 
+ * param M 
+ * param N
+ * param rate time constant
  */
 Kalman::Kalman(unsigned int m, unsigned int n, float rate) : M(m), N(n)
 {
-	
+	// this tracks the number of active and inactive frames
 	numActiveFrames = 0;
 	numInactiveFrames = 0;
 	
@@ -171,14 +176,26 @@ Kalman::Kalman(unsigned int m, unsigned int n, float rate) : M(m), N(n)
 	// measurement and has direct effect on the smoothness of tracking window
 	// - increase this tracking gets smoother
 	// - decrease this and tracking window becomes almost same with detection window
-	cv::setIdentity(filter->measurementNoiseCov, Scalar::all(10)); // 1e-1
+	cv::setIdentity(filter->measurementNoiseCov, Scalar::all(1e-1)); // 1e-1
 	cv::setIdentity(filter->errorCovPost, Scalar::all(1));
 	
-	// we are tracking 4 points, thus having 4 states: corners of rectangle
+	// Tracking center mass
 	filter->statePost.at<float>(0,0) = 0.0f;
 	filter->statePost.at<float>(1,0) = 0.0f;
 	//filter->statePost.at<float>(2,0) = initRect.x2;
 	//filter->statePost.at<float>(3,0) = initRect.y2;
+}
+
+/**
+ * Sets the process and measurement noise for the KF instead of using the 
+ * default values from the constructor.
+ *
+ * param Q process noise matrix
+ * param R measurement noise matrix
+ */
+void Kalman::init(cv::Mat& Q, cv::Mat& R){
+  filter->processNoiseCov = Q;
+  filter->measurementNoiseCov = R;
 }
 
 #endif
