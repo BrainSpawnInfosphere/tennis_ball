@@ -171,8 +171,9 @@ public:
                    hist,		  // the resulting histogram
                    dim,			    // it is a 3D histogram
                    histSize,	// number of bins
-                   ranges		// pixel value range
-                   );    // do not accumulate histogram
+                   ranges,		// pixel value range
+                   true,     // uniform histogram
+                   true);      // accumulate histograms
       
 		return hist;
 	}  
@@ -283,10 +284,6 @@ public:
     T getHistogramHSV(cv::Mat *hsv, const int num, int hbins=256, int sbins=256) {
         
         T hist;
-        
-        // Convert to HSV color space
-        //cv::Mat *hsv = new cv::Mat[num];
-        //for(int i=0;i<num;i++) cv::cvtColor(image[i], hsv[i], CV_BGR2HSV);
         
         // Prepare arguments for a 2D hue histogram
         float hranges[]= {0.0, 180.0};

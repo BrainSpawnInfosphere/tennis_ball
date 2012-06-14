@@ -57,7 +57,7 @@
 
 #include "kevin.h"
 
-// where T if for cv::MatND or cv:SparseMat
+// where T is for cv::MatND or cv:SparseMat
 //template <class T>
 class HistogramFinder {
    
@@ -73,6 +73,7 @@ private:
 	cv::SparseMat shistogram;
 	bool isSparse;
    cv::Point2f target;
+   
    
 public:
    
@@ -112,34 +113,7 @@ public:
 		shistogram= h;
 		cv::normalize(shistogram,shistogram,1.0,cv::NORM_L2);
 	}
-    /*
-	cv::Mat& colorReduce(cv::Mat &image, int div=64) {
-      
-      int n= static_cast<int>(log(static_cast<double>(div))/log(2.0));
-      // mask used to round the pixel value
-      uchar mask= 0xFF<<n; // e.g. for div=16, mask= 0xF0
-      
-      cv::Mat_<cv::Vec3b>::const_iterator it= image.begin<cv::Vec3b>();
-      cv::Mat_<cv::Vec3b>::const_iterator itend= image.end<cv::Vec3b>();
-      
-      // Set output image (always 1-channel)
-      //cv::Mat result(image.rows,image.cols,image.type());
-      //cv::Mat_<cv::Vec3b>::iterator itr= result.begin<cv::Vec3b>();
-      
-      for ( ; it!= itend; ++it , ++itr) {
-         
-         //(*itr)[0]= ((*it)[0]&mask) + div/2;
-         //(*itr)[1]= ((*it)[1]&mask) + div/2;
-         //(*itr)[2]= ((*it)[2]&mask) + div/2;
-         
-         (*it)[0]= ((*it)[0]&mask) + div/2;
-         (*it)[1]= ((*it)[1]&mask) + div/2;
-         (*it)[2]= ((*it)[2]&mask) + div/2;
-      }
-      
-      return image;
-   }
-   */
+    
    /**
     * Finds the colored object - all in one funciton call
     * 
@@ -150,18 +124,13 @@ public:
     * param double min size of blob
     * return bool if object blob is found
     */
-    /*
-	bool find(cv::Mat& color_image, cv::Point2f& p, const double minSize = 0) {
+    
+	bool find(cv::Mat& hsv, cv::Point2f& p, const double minSize = 0) {
       bool ret = false;
       
-      cv::Mat image_reduced = colorReduce(color_image,num_colors);
-      
-      // Convert to HSV space
-      cv::Mat hsv;
-      cv::cvtColor(image_reduced, hsv, CV_BGR2HSV);
-      
       // Match histogram
-      cv::Mat result_image = findHS(image_reduced);
+      cv::Mat result_image;
+      findHS(hsv,result_image);
       
       // Perform morphological ops 
       cv::erode(result_image,result_image, cv::Mat()); // get rid of "noise"
@@ -181,7 +150,7 @@ public:
          //printf("Ball: %f %f\n",x,y);
          //ROS_INFO("Ball: %f %f\n",x,y);
          //out = mask;
-         cv::circle( color_image, cvPoint(x,y),3, CV_RGB(0,255,0), -1, 8, 0 );
+         //cv::circle( color_image, cvPoint(x,y),3, CV_RGB(0,255,0), -1, 8, 0 );
          
          //Point2f p(x,y);
          p.x = x;
@@ -192,18 +161,16 @@ public:
       
 		return ret;
 	}
-	*/
+	
    
    /**
     * Finds the Hue & Saturation of the previously provided histogram in the 
     * image passed to it.
     *
-    * params cv::Mat image
+    * params cv::Mat image input HSV image
     * return cv::Mat result binary (single channel) image of found blobs
     */
 	cv::Mat& findHS(const cv::Mat& image, cv::Mat& result) {
-      
-		//cv::Mat result;
       
 		hranges[0]= 0.0;
 		hranges[1]= 180.0;
@@ -213,9 +180,6 @@ public:
       float sranges[] = {0.0, 255.0};
       const float *ranges[] = {hranges,sranges};
       int channels[2]={0,1};
-      
-		//for (int i=0; i<dim; i++)
-      //this->channels[i]= channels[i];
       
       // result of calcBackProject is always a single channel image
 		if (isSparse) { // call the right function based on histogram type

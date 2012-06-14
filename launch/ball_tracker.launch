@@ -1,0 +1,8 @@
+<launch>
+    <node pkg="tennis_ball" type="tracker" name="tracker" output="screen">
+    	<remap from="image_in" to="/camera/rgb/image_raw" />
+    	<param name="debug" type="bool" value="true" />
+    	<!-- 0 red, 1 blue, 2 tennis -->
+    	<param name="ball" type="int" value="0" />
+    </node>
+</launch>
